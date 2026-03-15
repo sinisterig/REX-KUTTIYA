@@ -3,6 +3,8 @@ import uuid
 import os
 import json
 import threading
+import requests
+import time
 from collections import defaultdict
 from flask import Flask, jsonify, Response
 from instagrapi import Client
@@ -12,16 +14,25 @@ from rich.layout import Layout
 from rich.panel import Panel
 from rich.live import Live
 from rich.align import Align
+from dotenv import load_dotenv
 
-ACC_FILE = "acc.txt"
-MESSAGE_FILE = "text.txt"
-TITLE_FILE = "nc.txt"
+load_dotenv()
 
-MSG_DELAY = 20
-GROUP_DELAY = 4
+ACC_FILE = os.getenv("ACC_FILE", "acc.txt")
+MESSAGE_FILE = os.getenv("MESSAGE_FILE", "text.txt")
+TITLE_FILE = os.getenv("TITLE_FILE", "nc.txt")
 
-DOC_ID = "29088580780787855"
-IG_APP_ID = "936619743392459"
+MSG_DELAY = int(os.getenv("MSG_DELAY", 20))
+GROUP_DELAY = int(os.getenv("GROUP_DELAY", 4))
+
+DOC_ID = os.getenv("DOC_ID", "29088580780787855")
+IG_APP_ID = os.getenv("IG_APP_ID", "936619743392459")
+
+FLASK_HOST = os.getenv("FLASK_HOST", "0.0.0.0")
+FLASK_PORT = int(os.environ.get("PORT", os.getenv("FLASK_PORT", 5000)))
+
+SELF_URL = os.getenv("SELF_URL")
+SELF_PING_INTERVAL = int(os.getenv("SELF_PING_INTERVAL", 100))
 
 app = Flask(__name__)
 LOG_BUFFER = []
@@ -29,6 +40,7 @@ LOG_BUFFER = []
 logs_ui = defaultdict(list)
 console = Console()
 USERS = []
+MESSAGE_BLOCKS = []
 
 @app.route('/')
 def home():
@@ -97,11 +109,21 @@ def dashboard():
 def log(console_message, clean_message=None):
     LOG_BUFFER.append(clean_message if clean_message else console_message)
 
+def self_ping_loop():
+    while True:
+        if SELF_URL:
+            try:
+                requests.get(SELF_URL, timeout=10)
+                log("🔁 Self ping successful")
+            except Exception as e:
+                log(f"⚠ Self ping failed: {e}")
+        time.sleep(SELF_PING_INTERVAL)
+
 MAX_PANEL_LINES = 35
 
 def ui_log(user, message):
     if message.startswith("⏳ ROUND"):
-        header = logs_ui[user][0]
+        header = logs_ui[user][0] if logs_ui[user] else f"🍸 ID - {user}"
         logs_ui[user] = [header, message]
         log(f"{user} | {message}", message)
         return
@@ -119,9 +141,9 @@ def ui_log(user, message):
 
 def start_flask():
     import logging
-    log = logging.getLogger('werkzeug')
-    log.disabled = True
-    app.run(host="0.0.0.0", port=5000, debug=False, use_reloader=False)
+    logg = logging.getLogger('werkzeug')
+    logg.disabled = True
+    app.run(host=FLASK_HOST, port=FLASK_PORT, debug=False, use_reloader=False)
 
 def load_accounts(path):
     accounts = []
@@ -165,7 +187,13 @@ def build_layout():
 def render_layout(layout):
     for user in USERS:
         content = "\n".join(logs_ui[user])
-        panel = Panel(content, title=f"[bold bright_green]{user}[/bold bright_green]", border_style="bright_green", padding=(0, 1), expand=True)
+        panel = Panel(
+            content,
+            title=f"[bold bright_green]{user}[/bold bright_green]",
+            border_style="bright_green",
+            padding=(0, 1),
+            expand=True
+        )
         layout["body"][user].update(panel)
 
 def setup_mobile_fingerprint(cl):
@@ -261,7 +289,7 @@ async def worker(username, password, proxy, cl):
 async def main():
     ACCOUNTS = load_accounts(ACC_FILE)
     global MESSAGE_BLOCKS
-    MESSAGE_BLOCKS = load_message_blocks(MESSAGE_FILE)
+    MESSAGE_BLOCKS = load_message_blocks(MESSAGE_FILE) if os.path.exists(MESSAGE_FILE) else []
     clients = []
     for username, password, proxy in ACCOUNTS:
         cl = await login(username, password, proxy)
@@ -282,4 +310,5 @@ async def main():
 
 if __name__ == "__main__":
     threading.Thread(target=start_flask, daemon=True).start()
+    threading.Thread(target=self_ping_loop, daemon=True).start()
     asyncio.run(main())
