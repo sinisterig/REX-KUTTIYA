@@ -1,0 +1,4 @@
+flask
+instagrapi
+rich
+python-dotenv
