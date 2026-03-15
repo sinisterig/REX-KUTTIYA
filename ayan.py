@@ -25,7 +25,7 @@ TITLE_FILE = os.getenv("TITLE_FILE", "nc.txt")
 MSG_DELAY = 30
 RENAME_DELAY = 180
 
-THREAD_ID = os.getenv("17842034250681921")  
+THREAD_ID = os.getenv("THREAD_ID")  
 
 DOC_ID = os.getenv("DOC_ID", "29088580780787855")
 IG_APP_ID = os.getenv("IG_APP_ID", "936619743392459")
